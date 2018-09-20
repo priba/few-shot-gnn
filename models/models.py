@@ -108,7 +108,8 @@ class MetricNN(nn.Module):
 
         if self.metric_network == 'gnn_iclr_nl':
             assert(self.args.train_N_way == self.args.test_N_way)
-            num_inputs = self.emb_size + self.args.train_N_way
+            # num_inputs = self.emb_size + self.args.train_N_way
+            num_inputs = self.emb_size
             if self.args.dataset == 'mini_imagenet':
                 self.gnn_obj = gnn_iclr.GNN_nl(args, num_inputs, nf=96, J=1)
             elif 'omniglot' in self.args.dataset:
@@ -122,15 +123,15 @@ class MetricNN(nn.Module):
 
     def gnn_iclr_forward(self, z, zi_s, labels_yi):
         # Creating WW matrix
-        zero_pad = Variable(torch.zeros(labels_yi[0].size()))
-        if self.args.cuda:
-            zero_pad = zero_pad.cuda()
-
-        labels_yi = [zero_pad] + labels_yi
+        # zero_pad = Variable(torch.zeros(labels_yi[0].size()))
+        # if self.args.cuda:
+        #    zero_pad = zero_pad.cuda()
+        # labels_yi = [zero_pad] + labels_yi
         zi_s = [z] + zi_s
 
-        nodes = [torch.cat([zi, label_yi], 1) for zi, label_yi in zip(zi_s, labels_yi)]
-        nodes = [node.unsqueeze(1) for node in nodes]
+        # nodes = [torch.cat([zi, label_yi], 1) for zi, label_yi in zip(zi_s, labels_yi)]
+        # nodes = [node.unsqueeze(1) for node in nodes]
+        nodes = [node.unsqueeze(1) for node in zi_s]
         nodes = torch.cat(nodes, 1)
 
         logits = self.gnn_obj(nodes).squeeze(-1)
