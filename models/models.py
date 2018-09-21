@@ -139,12 +139,13 @@ class MetricNN(nn.Module):
 
         query, support = self.gnn_obj(nodes)
         # Compute the distance
-        dist = (query.unsqueeze(1) - support).pow(2).sqrt().sum(-1) # BZ x Support set
+        dist = (query.unsqueeze(1) - support).pow(2).sum(-1).sqrt() # BZ x Support set
         
         labels = [label_yi.unsqueeze(1) for label_yi in labels_yi]
         labels = torch.cat(labels, 1)
-
-        logits = (dist.unsqueeze(-1)*labels).sum(-1)
+        
+        # keep original structure
+        logits = (dist.unsqueeze(-1)*labels).sum(1)
         outputs = F.sigmoid(logits)
 
         return outputs, logits
