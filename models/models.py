@@ -125,7 +125,7 @@ class MetricNN(nn.Module):
         # Creating WW matrix
         # zero_pad = Variable(torch.zeros(labels_yi[0].size()))
         # if self.args.cuda:
-        #    zero_pad = zero_pad.cuda()
+        #     zero_pad = zero_pad.cuda()
         # labels_yi = [zero_pad] + labels_yi
         zi_s = [z] + zi_s
 
@@ -133,8 +133,18 @@ class MetricNN(nn.Module):
         # nodes = [node.unsqueeze(1) for node in nodes]
         nodes = [node.unsqueeze(1) for node in zi_s]
         nodes = torch.cat(nodes, 1)
+        
+        # logits = self.gnn_obj(nodes).squeeze(-1)
+        # outputs = F.sigmoid(logits)
 
-        logits = self.gnn_obj(nodes).squeeze(-1)
+        query, support = self.gnn_obj(nodes)
+        # Compute the distance
+        dist = (query.unsqueeze(1) - support).pow(2).sqrt().sum(-1) # BZ x Support set
+        
+        labels = [label_yi.unsqueeze(1) for label_yi in labels_yi]
+        labels = torch.cat(labels, 1)
+
+        logits = (dist.unsqueeze(-1)*labels).sum(-1)
         outputs = F.sigmoid(logits)
 
         return outputs, logits

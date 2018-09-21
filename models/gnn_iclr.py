@@ -198,7 +198,7 @@ class GNN_nl(nn.Module):
             self.add_module('layer_l{}'.format(i), module_l)
 
         self.w_comp_last = Wcompute(self.input_features + int(self.nf / 2) * self.num_layers, nf, operator='J2', activation='none', ratio=[2, 2, 1, 1])
-        self.layer_last = Gconv(self.input_features + int(self.nf / 2) * self.num_layers, args.train_N_way, 2, bn_bool=False)
+        self.layer_last = Gconv(self.input_features + int(self.nf / 2) * self.num_layers, 3+args.train_N_way, 2, bn_bool=False)
 
         # Scale the vector
         self.alpha = nn.Parameter(torch.ones(1))
@@ -221,11 +221,13 @@ class GNN_nl(nn.Module):
 
         # Query row
         Wl = Wl.sum(-1) # Add ones in the diagonal
-        Wl = self.alpha*Wl[:, 0, :] + self.beta # Take query connections + scale
-        Wl = Wl.unsqueeze(-1).expand(Wl.size(0),Wl.size(1), out.size(-1))
-        out = Wl * out 
-        out = out.sum(1)
-        return out
+        Wl_q = self.alpha*Wl[:, 0, :] + self.beta # Take query connections + scale
+        Wl_q = Wl_q.unsqueeze(-1).expand(Wl_q.size(0),Wl_q.size(1), out.size(-1))
+        out_q = Wl_q * out 
+        out_q = out_q.sum(1)
+        
+        # Out_q as a liniar operation between support set and itself.
+        return out_q, out[:,1:,:]
 
 class GNN_active(nn.Module):
     def __init__(self, args, input_features, nf, J):
