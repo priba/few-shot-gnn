@@ -10,6 +10,7 @@ from utils import io_utils
 import models.models as models
 import test
 import numpy as np
+from Logger import LogMetric
 
 # Training settings
 parser = argparse.ArgumentParser(description='Few-Shot Learning with Graph Neural Networks')
@@ -69,9 +70,13 @@ def _init_():
         os.makedirs('checkpoints/'+args.exp_name)
     if not os.path.exists('checkpoints/'+args.exp_name+'/'+'models'):
         os.makedirs('checkpoints/'+args.exp_name+'/'+'models')
+    if not os.path.exists('checkpoints/'+args.exp_name+'/'+'logger'):
+        os.makedirs('checkpoints/'+args.exp_name+'/'+'logger')
     os.system('cp main.py checkpoints'+'/'+args.exp_name+'/'+'main.py.backup')
     os.system('cp models/models.py checkpoints' + '/' + args.exp_name + '/' + 'models.py.backup')
 _init_()
+
+logger = LogMetric.Logger('checkpoints/'+args.exp_name+'/'+'logger', force=True)
 
 io = io_utils.IOStream('checkpoints/' + args.exp_name + '/run.log')
 io.cprint(str(args))
@@ -135,13 +140,14 @@ def train():
     opt_enc_nn = optim.Adam(enc_nn.parameters(), lr=args.lr, weight_decay=weight_decay)
     opt_metric_nn = optim.Adam(metric_nn.parameters(), lr=args.lr, weight_decay=weight_decay)
 
-    enc_nn.train()
-    metric_nn.train()
     counter = 0
     total_loss = 0
     val_acc, val_acc_aux = 0, 0
     test_acc = 0
     for batch_idx in range(args.iterations):
+
+        enc_nn.train()
+        metric_nn.train()
 
         ####################
         # Train
@@ -160,14 +166,16 @@ def train():
         opt_enc_nn.step()
         opt_metric_nn.step()
 
-
         adjust_learning_rate(optimizers=[opt_enc_nn, opt_metric_nn], lr=args.lr, iter=batch_idx)
+
+        curr_lr = adjust_learning_rate(optimizers=[opt_enc_nn, opt_metric_nn], lr=args.lr, iter=batch_idx)
 
         ####################
         # Display
         ####################
         counter += 1
         total_loss += loss_d_metric.data[0]
+        train_loss = total_loss / counter
         if batch_idx % args.log_interval == 0:
                 display_str = 'Train Iter: {}'.format(batch_idx)
                 display_str += '\tLoss_d_metric: {:.6f}'.format(total_loss/counter)
@@ -179,37 +187,54 @@ def train():
         # Test
         ####################
         if (batch_idx + 1) % args.test_interval == 0 or batch_idx == 20:
+
+            logger.add_scalar('loss_train', train_loss)
+
+            enc_nn.eval()
+            metric_nn.eval()
+
             if batch_idx == 20:
                 test_samples = 100
             else:
                 test_samples = 3000
+
+            # train for omniglot - imagenet
+            train_acc_aux = test.test_one_shot(args, model=[enc_nn, metric_nn, softmax_module],
+                                               test_samples=test_samples, partition='train')
+            logger.add_scalar('acc_train', train_acc_aux)
+
+            # validation for imagenet
             if args.dataset == 'mini_imagenet':
                 val_acc_aux = test.test_one_shot(args, model=[enc_nn, metric_nn, softmax_module],
                                                  test_samples=test_samples*5, partition='val')
+                logger.add_scalar('acc_val', val_acc_aux)
+
+            # test for omniglot - imagenet
             test_acc_aux = test.test_one_shot(args, model=[enc_nn, metric_nn, softmax_module],
                                               test_samples=test_samples*5, partition='test')
-            test.test_one_shot(args, model=[enc_nn, metric_nn, softmax_module],
-                               test_samples=test_samples, partition='train')
-            enc_nn.train()
-            metric_nn.train()
+            logger.add_scalar('acc_test', test_acc_aux)
 
-            if val_acc_aux is not None and val_acc_aux >= val_acc:
-                test_acc = test_acc_aux
-                val_acc = val_acc_aux
+            ####################
+            # Save model
+            ####################
+            if ((batch_idx + 1) % args.save_interval == 0 and args.dataset == 'omniglot') or \
+                    (args.dataset == 'mini_imagenet' and val_acc_aux >= val_acc):
+                torch.save(enc_nn, 'checkpoints/%s/models/enc_nn.t7' % args.exp_name)
+                torch.save(metric_nn, 'checkpoints/%s/models/metric_nn.t7' % args.exp_name)
 
             if args.dataset == 'mini_imagenet':
-                io.cprint("Best test accuracy {:.4f} \n".format(test_acc))
+                if val_acc_aux >= val_acc:
+                    test_acc = test_acc_aux
+                    val_acc = val_acc_aux
+                    io.cprint("Best test accuracy {:.4f} \n".format(test_acc))
 
-        ####################
-        # Save model
-        ####################
-        if (batch_idx + 1) % args.save_interval == 0:
-            torch.save(enc_nn, 'checkpoints/%s/models/enc_nn.t7' % args.exp_name)
-            torch.save(metric_nn, 'checkpoints/%s/models/metric_nn.t7' % args.exp_name)
+            logger.add_scalar('learning_rate', curr_lr)
+            logger.step()
 
     # Test after training
     test.test_one_shot(args, model=[enc_nn, metric_nn, softmax_module],
                        test_samples=args.test_samples)
+    print('Test final acc: %f, for %d one-shot test samples.' % (test_acc_aux,args.test_samples))
 
 
 def adjust_learning_rate(optimizers, lr, iter):
