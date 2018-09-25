@@ -166,8 +166,6 @@ def train():
         opt_enc_nn.step()
         opt_metric_nn.step()
 
-        adjust_learning_rate(optimizers=[opt_enc_nn, opt_metric_nn], lr=args.lr, iter=batch_idx)
-
         curr_lr = adjust_learning_rate(optimizers=[opt_enc_nn, opt_metric_nn], lr=args.lr, iter=batch_idx)
 
         ####################
@@ -243,6 +241,7 @@ def adjust_learning_rate(optimizers, lr, iter):
     for optimizer in optimizers:
         for param_group in optimizer.param_groups:
             param_group['lr'] = new_lr
+    return new_lr
 
 
 if __name__ == "__main__":
